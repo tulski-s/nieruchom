@@ -18,7 +18,7 @@ CREATE TABLE stg_otodom (
     , district VARCHAR
     , neighbourhood VARCHAR
     , no_rooms INTEGER
-    , price DECIMAL(9, 2) -- up to millions with 2 digits in fraction,
+    , price DECIMAL(10, 2) -- up to millions with 2 digits in fraction,
     , area REAL
     , offer_source VARCHAR
 );
@@ -38,7 +38,7 @@ CREATE TABLE wrk_otodom (
     , district VARCHAR
     , neighbourhood VARCHAR
     , no_rooms INTEGER
-    , price DECIMAL(9, 2) -- up to millions with 2 digits in fraction,
+    , price DECIMAL(10, 2) -- up to millions with 2 digits in fraction,
     , area REAL
     , etl_action VARCHAR
     , ds DATE
@@ -71,7 +71,7 @@ CREATE TABLE offers (
     , district VARCHAR
     , neighbourhood VARCHAR
     , no_rooms INTEGER
-    , price DECIMAL(9, 2) -- up to millions with 2 digits in fraction,
+    , price DECIMAL(10, 2) -- up to millions with 2 digits in fraction,
     , area REAL
     , offer_first_seen DATE
     , offer_last_seen DATE
