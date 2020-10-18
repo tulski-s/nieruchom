@@ -58,6 +58,12 @@ FROM
           stg.offer_source_id = b.offer_source_id
         WHERE
           stg.ds = '{ds}'
+          AND 
+            CASE 
+              WHEN b.row_actv_flg IS NOT NULL
+              THEN b.row_actv_flg = True
+              ELSE True
+            END
     ) x
 WHERE 
   -- deduplicates offers with same source offer id
@@ -148,7 +154,7 @@ FROM
         SELECT
             b.sk_offer
             , False AS row_actv_flg
-            , b.offer_first_seen AS price_end
+            , b.offer_last_seen AS price_end
         FROM
             offers b
         INNER JOIN
