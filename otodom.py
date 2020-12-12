@@ -120,11 +120,21 @@ class OtoDom(scraper.Scraper):
             province, county, city, district, neighbourhood = self._parse_location(offer_location_raw)
             offer_details_tag = tag.find_all('ul', {'class': 'params'})[0]
             details_tag_lis = offer_details_tag.find_all('li')
-            no_rooms = int(re.findall('(\d+) [pokoje|pokój]', details_tag_lis[0].text.strip())[0])
+            try:
+                no_rooms = int(re.findall('(\d+) [pokoje|pokój]', details_tag_lis[0].text.strip())[0])
+            except IndexError:
+                # there are rare cases where there is no rooms info
+                no_rooms = None
             price_raw_tag = details_tag_lis[1].text.strip()
             if 'Zapytaj o cenę' in price_raw_tag:
                 # no price available. ignore this offer
                 continue
+            elif no_rooms == None:
+                price = float(
+                    re.findall(
+                        '([\d\s,]+)zł.*', details_tag_lis[0].text.strip()
+                    )[0].replace(' ', '').replace(',', '.')
+                )
             else:
                 price = float(
                     re.findall(
@@ -132,9 +142,16 @@ class OtoDom(scraper.Scraper):
                         price_raw_tag
                     )[0].replace(' ', '').replace(',', '.')
                 )
-            area = float(
-                re.findall('([\d,]+) m²', details_tag_lis[2].text.strip())[0].replace(',', '.')
-            )
+
+            if no_rooms != None:
+                area = float(
+                    re.findall('([\d,]+) m²', details_tag_lis[2].text.strip())[0].replace(',', '.')
+                )
+            else:
+                area = float(
+                    re.findall('([\d,]+) m²', details_tag_lis[1].text.strip())[0].replace(',', '.')
+                )
+            
             offer_bottom_tag = tag.find_all('div', {'class': 'offer-item-details-bottom'})[0]
             offer_bottom_lis = offer_bottom_tag.find_all('li')
             if len(offer_bottom_lis) == 1:
