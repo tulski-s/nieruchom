@@ -1,7 +1,10 @@
 # built in
+import datetime
 import json
+import logging
 import random
 import re
+import sys
 import time
 
 # 3rd party
@@ -11,6 +14,11 @@ import bs4
 # custom
 import scraper
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+fh = logging.FileHandler(f'otodom_at_{datetime.date.today().strftime("%Y_%m_%d")}.log')
+logger.addHandler(fh)  # log to file
+logger.addHandler(logging.StreamHandler(sys.stdout))  # and to console
 
 class OtoDom(scraper.Scraper):
     """
@@ -25,25 +33,43 @@ class OtoDom(scraper.Scraper):
         self.params = {
             'nrAdsPerPage': 72  # no of offers per page. 72 is max
         }
+        self.selected_cities = set([
+            'bydgoszcz', 'gdansk', 'katowice', 'krakow', 'lodz', 'lublin',
+            'lubin', 'poznan', 'szczecin', 'warszawa', 'wroclaw', 'gdynia',
+            'zielona-gora', 'leszno', 'jelenia-gora', 'gdynia', 'swidnica'
+        ])
 
-    def scrape(self, limit_pages=None):
-        listing_and_type = zip(
-            [self.flat_rent_listing_url, self.flat_sell_listing_url],
-            ['rent', 'sell']
-        )
+    def scrape(self, limit_pages=None, filter_cities=True):
+        listings = self._get_all_listing()
+        listings_and_types = []
+        for lst in listings:
+            if filter_cities == True:
+                loc = self._url2loc(lst)
+                if loc not in self.selected_cities:
+                    continue
+            if 'wynajem' in lst:
+                listings_and_types.append((lst, 'rent'))
+            elif 'sprzedaz/mieszkanie' in lst:
+                listings_and_types.append((lst, 'sell'))
+            elif 'sprzedaz/nowe-mieszkanie' in lst:
+                listings_and_types.append((lst, 'sell_new'))
         offers = []
         counter = 0
-        for listing, _type in listing_and_type:
+        for idx, (listing, _type) in enumerate(listings_and_types):
+            logger.debug(f'Process listing: {listing} [{idx+1}/{len(listings_and_types)}]')
             for page_idx in range(1, self._get_no_pages(listing)+1):
                 offers.extend(
                     self._get_offers(listing, _type, page_idx)
                 )
-                # sleep for random (real) time between <start, stop>
-                time.sleep(random.uniform(1, 3))
+                self._sleep()
                 counter += 1
                 if (limit_pages != None) and (counter >= limit_pages):
                     return self._dedup_offers(offers)
         return self._dedup_offers(offers) 
+
+    def _sleep(self):
+        """sleep for random (real) time between <start, stop>"""
+        time.sleep(random.uniform(1, 2))
 
     def _get_no_pages(self, listing_base):
         r = requests.get(
@@ -89,7 +115,7 @@ class OtoDom(scraper.Scraper):
         return province, county, city, district, neighbourhood
 
     def _get_offers(self, listing, listing_type, page_idx):
-        print(f'Getting offers from: {listing}, page: {page_idx}')
+        logger.debug(f'Getting offers from: {listing}, page: {page_idx}')
         if page_idx == 1:
             # base listing is also a first pages
             params=dict(**self.params)
@@ -114,7 +140,7 @@ class OtoDom(scraper.Scraper):
             offer_url = tag.find_all(['a'])[0].get('href')
             if listing_type == 'rent':
                 loc_pat = r'Mieszkanie na wynajem: (.*)'
-            elif listing_type == 'sell':
+            elif listing_type in ('sell', 'sell_new'):
                 loc_pat =  r'Mieszkanie na sprzedaż: (.*)'
             offer_location_raw = re.findall(loc_pat, tag.find_all(['p'])[0].text)[0]
             province, county, city, district, neighbourhood = self._parse_location(offer_location_raw)
@@ -125,6 +151,11 @@ class OtoDom(scraper.Scraper):
             except IndexError:
                 # there are rare cases where there is no rooms info
                 no_rooms = None
+
+            if len(details_tag_lis) == 1:
+                # should not be the case. sth odd with this offer
+                continue
+
             price_raw_tag = details_tag_lis[1].text.strip()
             if 'Zapytaj o cenę' in price_raw_tag:
                 # no price available. ignore this offer
@@ -182,17 +213,75 @@ class OtoDom(scraper.Scraper):
         list_of_strings = set(list_of_strings)
         return [json.loads(s) for s in list_of_strings]
 
+    def _url2loc(self, url):
+        url = url.replace('https://www.otodom.pl/sprzedaz/nowe-mieszkanie/' ,'')
+        url = url.replace('https://www.otodom.pl/sprzedaz/mieszkanie/' ,'')
+        url = url.replace('https://www.otodom.pl/wynajem/mieszkanie/' ,'')
+        url = url[:-1]
+        return url
+
+    def _get_all_listing(self):
+        base_listings = set()
+        with open('./otodom_locations_urls.txt', 'r') as fh:
+            for line in fh.readlines():
+                base_listings.add(line.strip())
+
+        extra_locs_keys = set([
+            'jelenia-gora', 'legnica', 'lubin', 'walbrzych', 'wroclaw', 'bydgoszcz', 'grudziadz',
+            'inowroclaw', 'torun', 'wloclawek', 'lodz', 'pabianice', 'piotrkow-trybunalski', 
+            'tomaszow-mazowiecki', 'chelm', 'lublin', 'zamosc', 'gorzow-wielkopolski', 
+            'zielona-gora', 'krakow', 'nowy-sacz', 'tarnow', 'plock', 'pruszkow', 'radom', 
+            'warszawa', 'kedzierzyn-kozle', 'rzeszow', 'bialystok', 'lomza', 'gdansk', 'gdynia', 
+            'sopot', 'tczew', 'bedzin', 'bielsko-biala', 'chorzow', 'czestochowa', 'dabrowa-gornicza',
+            'jastrzebie-zdroj', 'jaworzno', 'katowice', 'mikolow', 'myslowice', 'rybnik', 
+            'siemianowice-slaskie', 'sosnowiec', 'swietochlowice', 'tarnowskie-gory', 'tychy',
+            'zabrze', 'zory', 'kielce', 'ostrowiec-swietokrzyski', 'elblag', 'olsztyn', 'gniezno',
+            'kalisz', 'konin', 'leszno', 'ostrow-wielkopolski', 'pila', 'kolobrzeg', 'koszalin',
+            'stargard', 'szczecin',
+        ])
+
+        with_extra_locs = set()
+        for listing in base_listings:
+            base_loc = self._url2loc(listing)
+            if base_loc in extra_locs_keys:
+                with_extra_locs.add(listing)
+
+        extended_listings = set()
+        for idx, listing in enumerate(with_extra_locs):
+            logger.debug(f'Getting extra listing from: {listing} [{idx+1}/{len(with_extra_locs)}]')
+            r = requests.get(
+                listing,
+                headers=self.get_headers(),
+            )
+            bs_obj = bs4.BeautifulSoup(r.text, features='lxml')
+            extra_links_section = bs_obj.find_all('div', {'id': 'locationLinks'})[0]
+            extra_links = extra_links_section.find_all('a', href=True)
+            for link in extra_links:
+                _href = link['href']
+                if _href != '#':
+                    extended_listings.add(_href)
+            self._sleep()
+        all_listings = list(base_listings.union(extended_listings))
+        return all_listings
+
 
 def main():
     s = OtoDom()
     # offers = s.scrape(limit_pages=3)
-    offers = s.scrape()
-    print('No of offers: ', len(offers))
-    print('Random offer: ', random.choice(offers))
+    try:
+        offers = s.scrape()
+    except:
+        # this will log full trackeback message
+        dfsds
+        logger.exception('Got exception on main handler!')
+        raise
+
+    logger.debug(f'No of offers: {len(offers)}')
+    logger.debug(f'Random offer: {random.choice(offers)}')
+    
     s.store_offers(offers)
-    print('Saved data')
+    logger.debug('Saved data')
 
 
 if __name__ == '__main__':
     main()
-

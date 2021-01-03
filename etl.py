@@ -136,9 +136,18 @@ def main():
     scrapers = [
         otodom.OtoDom()
     ]
-    scrape_data(scrapers, ds)
-    load_to_stg(scrapers, ds)
-    load_to_dwh(scrapers, ds)
+
+    logger = otodom.logger
+
+    try:
+        scrape_data(scrapers, ds)
+        load_to_stg(scrapers, ds)
+        load_to_dwh(scrapers, ds)
+    except:
+        # this will log full trackeback message
+        logger.exception('Got exception on main handler!')
+        raise
+    
     
 
     """
